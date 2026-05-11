@@ -377,3 +377,40 @@ class TestAuthenticationUtilsAuthentication:
                 # determine_username_from_uid should NOT be called when migration succeeds
                 mock_determine_uid.assert_not_called()
                 assert response == {'username': 'migrated_user'}
+
+    def test_gocau_invalid_email_stored_as_empty(self, randname, ldap_authenticator):
+        """Invalid email from authenticator should be stored as empty string, not the raw value."""
+        username = randname('user')
+        local_user, auth_user, created = authentication.get_or_create_authenticator_user(
+            uid=username, email="jsmith", authenticator=ldap_authenticator, user_details={'email': 'not-an-email'}, extra_data={}
+        )
+        assert created is True
+        assert local_user is not None
+        assert local_user.email == ""
+        assert auth_user.email == ""
+
+    def test_gocau_valid_email_stored_correctly(self, randname, ldap_authenticator):
+        """Valid email from authenticator should be stored normally."""
+        username = randname('user')
+        local_user, auth_user, created = authentication.get_or_create_authenticator_user(
+            uid=username, email="user@example.com", authenticator=ldap_authenticator, user_details={'email': 'user@example.com'}, extra_data={}
+        )
+        assert created is True
+        assert local_user is not None
+        assert local_user.email == "user@example.com"
+        assert auth_user.email == "user@example.com"
+
+    def test_gocau_existing_user_invalid_email_update(self, randname, ldap_authenticator):
+        """When an existing AuthenticatorUser re-authenticates with invalid email, email should become empty."""
+        username = randname('user')
+        local_user, auth_user, created = authentication.get_or_create_authenticator_user(
+            uid=username, email="user@example.com", authenticator=ldap_authenticator, user_details={}, extra_data={}
+        )
+        assert created is True
+        assert auth_user.email == "user@example.com"
+
+        local_user2, auth_user2, created2 = authentication.get_or_create_authenticator_user(
+            uid=username, email="invalid-no-at-sign", authenticator=ldap_authenticator, user_details={}, extra_data={}
+        )
+        assert created2 is False
+        assert auth_user2.email == ""

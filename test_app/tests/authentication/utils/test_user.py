@@ -1,9 +1,43 @@
+import logging
 from unittest import mock
 
 import pytest
 
 from ansible_base.authentication.models import AuthenticatorUser
-from ansible_base.authentication.utils.user import can_user_change_password
+from ansible_base.authentication.utils.user import can_user_change_password, normalize_and_get_email
+
+
+@pytest.mark.parametrize(
+    "email_input,expected",
+    [
+        ("user@valid.com", "user@valid.com"),
+        ("User@Valid.COM", "user@valid.com"),
+        ("  user@valid.com  ", "user@valid.com"),
+        (["user@valid.com", "other@valid.com"], "user@valid.com"),
+        ("jsmith", None),
+        ("not-an-email", None),
+        ("@nodomain", None),
+        ("user@", None),
+        ("", None),
+        (None, None),
+        ([], None),
+        (42, None),
+        ({}, None),
+        (["invalid-email"], None),
+        ([""], None),
+        ([42], None),
+    ],
+)
+def test_normalize_and_get_email(email_input, expected):
+    assert normalize_and_get_email(email_input) == expected
+
+
+def test_normalize_and_get_email_logs_warning_for_invalid(caplog):
+    with caplog.at_level(logging.WARNING, logger='ansible_base.authentication.utils.user'):
+        result = normalize_and_get_email("jsmith")
+    assert result is None
+    assert "Invalid email address" in caplog.text
+    assert "jsmith" in caplog.text
 
 
 @pytest.mark.parametrize(

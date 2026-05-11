@@ -327,13 +327,16 @@ def get_or_create_authenticator_user(
     else:
         username = determine_username_from_uid(uid=uid, uid_filter=[uid], email=email, authenticator=authenticator)
 
+    # Validate email before storing — invalid emails (e.g. from misconfigured authenticators) become empty string
+    validated_email = normalize_and_get_email(email) or ""
+
     # Step 2: Now that the username is finalized, try to find the AuthenticatorUser.
     auth_user = None
     created = None
     try:
         auth_user = AuthenticatorUser.objects.get(uid=uid, provider=authenticator)
         auth_user.extra_data = extra_data
-        auth_user.email = email
+        auth_user.email = validated_email
         auth_user.save()
         created = False
     except AuthenticatorUser.DoesNotExist:
@@ -342,7 +345,9 @@ def get_or_create_authenticator_user(
             return None, None, None
 
     # Step 3: Get or create the main User model instance.
-    details = {k: user_details.get(k, "") for k in ["first_name", "last_name", "email"]}
+    validated_user_email = normalize_and_get_email(user_details.get("email", "")) or ""
+    details = {k: user_details.get(k, "") for k in ["first_name", "last_name"]}
+    details["email"] = validated_user_email
     local_user, user_created = get_user_model().objects.get_or_create(username=username, defaults=details)
     if user_created:
         logger.info(f"Authenticator {authenticator.name} created User {username}")
@@ -351,7 +356,7 @@ def get_or_create_authenticator_user(
     if created is None:
         auth_user, created = AuthenticatorUser.objects.get_or_create(
             user=local_user,
-            email=email,
+            email=validated_email,
             uid=uid,
             provider=authenticator,
             defaults={'extra_data': extra_data},
